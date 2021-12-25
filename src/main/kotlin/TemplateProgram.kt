@@ -10,7 +10,7 @@ import kotlin.math.max
 
 val windowSize = Vector2(800.0, 600.0)
 
-var speedModifier = 0.3
+var speedModifier = 0.8
 var collisionProtectionMilliseconds = 1000
 var restitutionCoefficient = 1.0
 
@@ -34,7 +34,6 @@ val squares = arrayOf(
         mass = 0.1
     )
 )
-lateinit var prevSquares: Array<Square>
 
 fun main() = application {
     configure {
@@ -48,9 +47,7 @@ fun main() = application {
             squares.forEach { it.move(program.deltaTime) }
 
             if (!collisionProtectionBetweenSquares.isProtected()) {
-                revertToExactCollision(squares[0], squares[1], prevSquares[0], prevSquares[1], program.deltaTime)?.let { collisionBetweenSquares ->
-                    squares[0] = prevSquares[0]
-                    squares[1] = prevSquares[1]
+                findCollision(squares[0], squares[1])?.let { collisionBetweenSquares ->
                     collisionBetweenSquares.applyNewSpeedsAndRotations()
                     collisionProtectionBetweenSquares.startProtection()
                 }
@@ -58,20 +55,16 @@ fun main() = application {
 
             for (i in 0..1) {
                 val square = squares[i]
-                val prevSquare = prevSquares[i]
 
                 for (wall in walls) {
                     if (!square.collisionProtectionWithWalls.getValue(wall).isProtected()) {
-                        revertToExactCollision(square, wall, prevSquare, wall, program.deltaTime)?.let { collisionWithWall ->
-                            squares[i] = prevSquare
+                        findCollision(square, wall)?.let { collisionWithWall ->
                             collisionWithWall.applyNewSpeedsAndRotations(onlyToFirstParam = true)
                             square.collisionProtectionWithWalls.getValue(wall).startProtection()
                         }
                     }
                 }
             }
-
-            prevSquares = squares.map { it.copy() }.toTypedArray()
 
             drawer.clear(ColorRGBa.WHITE)
             squares.forEach { it.draw(drawer) }
@@ -111,48 +104,6 @@ class CollisionProtection {
     fun isProtected() = ignoreCollisionsUntil?.let { protectedUntil -> System.currentTimeMillis() < protectedUntil } ?: false
 
     private var ignoreCollisionsUntil: Long? = null // number of milliseconds since 1970
-}
-
-/**
- * Find time of collision between time = 0.0 and time = [deltaSeconds].
- *
- * Input assumptions:
- *  - there is no collision at time = 0.0
- *  - there is a collision at time = [deltaSeconds]
- *  - the collision started at some point between the 2
- *
- * @param prevX square at time = 0.0
- * @param prevY square at time = 0.0
- * @param deltaSeconds max number of seconds to move
- * @return time in seconds at which the collision started
- */
-fun findCollisionTime(prevX: Square, prevY: Square, deltaSeconds: Double): Double {
-    val nIterations = 8
-    var left = 0.0
-    var right = deltaSeconds
-    repeat(nIterations) {
-        val middle = left / 2 + right / 2
-        val prevXAtMiddleTime = prevX.copy().apply { move(middle) }
-        val prevYAtMiddleTime = prevY.copy().apply { move(middle) }
-        val collisionAtMiddleTime = (findCollision(prevXAtMiddleTime, prevYAtMiddleTime) != null)
-        if (collisionAtMiddleTime) {
-            right = middle
-        }
-        else {
-            left = middle
-        }
-    }
-    return left / 2 + right / 2
-}
-
-fun revertToExactCollision(x: Square, y: Square, prevX: Square, prevY: Square, deltaSeconds: Double): Collision? {
-    if (findCollision(x, y) != null) {
-        val collisionTime = findCollisionTime(prevX, prevY, deltaSeconds)
-        prevX.move(collisionTime)
-        prevY.move(collisionTime)
-        return findCollision(prevX, prevY)!!
-    }
-    return null
 }
 
 fun findCollision(x: Square, y: Square): Collision? {
